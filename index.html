@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>単振動：軌跡保持ストップ対応版</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      color: #333;
+      margin: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h2 { margin-bottom: 5px; color: #111; }
+    p.subtitle { color: #555; margin-top: 0; font-size: 0.9rem; margin-bottom: 15px; }
+
+    .app-container {
+      display: flex;
+      gap: 15px;
+      width: 1060px;
+    }
+
+    .control-panel {
+      flex: 0 0 320px;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .control-section {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 12px;
+    }
+    .control-section:last-child { border: none; }
+    .control-section-title { font-weight: bold; color: #444; margin-bottom: 8px; font-size: 0.92rem; }
+
+    .control-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn-row { display: flex; gap: 10px; }
+    button {
+      flex: 1;
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      background-color: white;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.88rem;
+    }
+    button:hover { background-color: #f0f0f0; }
+    button#playBtn { background-color: #337ab7; color: white; border-color: #2e6da4; }
+    button#playBtn:hover { background-color: #286090; }
+
+    label { font-size: 0.88rem; color: #555; }
+    input[type="range"] { width: 100%; cursor: pointer; }
+    .val-display { font-family: monospace; float: right; color: #222; font-weight: bold; }
+
+    .radio-group, .checkbox-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 5px;
+    }
+    .radio-group label, .checkbox-group label {
+      cursor: pointer;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.88rem;
+    }
+
+    .sub-option {
+      margin-left: 20px;
+      margin-top: 2px;
+      font-size: 0.82rem;
+      color: #0066cc;
+    }
+
+    .info-box {
+      background-color: #eef4fc;
+      border: 1px solid #d0dbe5;
+      padding: 12px;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .info-box .title { font-weight: bold; font-size: 0.88rem; color: #0066cc; }
+    .info-box .formula { font-size: 1.1rem; font-family: 'Times New Roman', Times, serif; color: #111; text-align: center; }
+    .info-box .val-row { font-size: 0.9rem; color: #222; font-weight: bold; display: flex; justify-content: space-between; }
+
+    .canvas-panel {
+      flex: 1;
+      background: white;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    }
+    canvas {
+      background: #fafafa;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+    }
+  </style>
+</head>
+<body>
+
+<h2>単振動と微分：軌跡保持ストップ対応版</h2>
+<p class="subtitle">1周期描画した状態でそのまま静止し、完成したグラフを観察できます</p>
+
+<div class="app-container">
+  
+  <div class="control-panel">
+    
+    <!-- 1. シミュレーション制御 -->
+    <div class="control-section">
+      <div class="control-section-title">SIMULATION CONTROL</div>
+      <div class="control-row">
+        <div class="btn-row">
+          <button id="playBtn">一時停止</button>
+          <button id="resetBtn">リセット</button>
+        </div>
+        <div>
+          <label for="speedSlider">進行スピード: </label><span id="speedVal" class="val-display">0.8</span>
+          <input type="range" id="speedSlider" min="0.2" max="2" step="0.1" value="0.8">
+        </div>
+      </div>
+    </div>
+
+    <!-- 描画モードの切り替え -->
+    <div class="control-section">
+      <div class="control-section-title" style="color: #0066cc;">DRAWING MODE (表示モード)</div>
+      <div class="radio-group">
+        <label>
+          <input type="radio" name="drawMode" value="single" checked>
+          1周期表示 (1周期ジャスト表示 + T表示)
+        </label>
+        <div class="sub-option">
+          <label><input type="checkbox" id="chkStopOnePeriod" checked> 1周期完了時にそのまま停止</label>
+        </div>
+        <label style="margin-top: 6px;">
+          <input type="radio" name="drawMode" value="continuous">
+          連続描画 (右方向へずっと伸びる)
+        </label>
+      </div>
+    </div>
+
+    <!-- 2. 物理パラメータ設定 -->
+    <div class="control-section">
+      <div class="control-section-title">PHYSICS PARAMETERS</div>
+      <div class="control-row">
+        <div>
+          <label for="ampSlider">振幅 (A): </label><span id="ampVal" class="val-display">1.5 m</span>
+          <input type="range" id="ampSlider" min="0.0" max="2.0" step="0.1" value="1.5">
+        </div>
+        <div>
+          <label for="kSlider">バネ定数 (k): </label><span id="kVal" class="val-display">30 N/m</span>
+          <input type="range" id="kSlider" min="0" max="50" step="1" value="30">
+        </div>
+        <div>
+          <label for="massSlider">質量 (m): </label><span id="massVal" class="val-display">2.0 kg</span>
+          <input type="range" id="massSlider" min="0.0" max="5.0" step="0.1" value="2.0">
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 物理値表示 (ω, T) -->
+    <div class="info-box">
+      <div class="title">DERIVED VALUES (ω, T)</div>
+      <div class="formula">ω = √(k/m) , T = 2π/ω</div>
+      <div class="val-row"><span>角振動数 (ω):</span><span id="omegaValDisp" style="color: #d32f2f;">3.87 rad/s</span></div>
+      <div class="val-row"><span>周期 (T):</span><span id="periodValDisp">1.62 s</span></div>
+    </div>
+
+    <!-- 4. 表示オプション -->
+    <div class="control-section">
+      <div class="control-section-title">DISPLAY OPTIONS</div>
+      <div class="checkbox-group">
+        <label><input type="checkbox" id="chkTrace" checked> 軌跡を濃く残す (くっきり点線)</label>
+        <div style="border-top: 1px solid #eee; margin-top: 3px; padding-top: 8px;"></div>
+        <label style="color: #1e88e5;"><input type="checkbox" id="chkX" checked> ① 変位 x(t)</label>
+        <label style="color: #43a047;"><input type="checkbox" id="chkV" checked> ② 速度 v(t)</label>
+        <label style="color: #fb8c00;"><input type="checkbox" id="chkA" checked> ③ 加速度 a(t)</label>
+      </div>
+    </div>
+
+  </div> <!-- /control-panel -->
+
+  <div class="canvas-panel">
+    <canvas id="simCanvas" width="710" height="640"></canvas>
+  </div>
+
+</div>
+
+<script>
+const canvas = document.getElementById('simCanvas');
+const ctx = canvas.getContext('2d');
+
+const playBtn = document.getElementById('playBtn');
+const resetBtn = document.getElementById('resetBtn');
+const speedSlider = document.getElementById('speedSlider');
+const ampSlider = document.getElementById('ampSlider');
+const kSlider = document.getElementById('kSlider');
+const massSlider = document.getElementById('massSlider');
+
+const speedValDisp = document.getElementById('speedVal');
+const ampValDisp = document.getElementById('ampVal');
+const kValDisp = document.getElementById('kVal');
+const massValDisp = document.getElementById('massVal');
+
+const omegaValDisp = document.getElementById('omegaValDisp');
+const periodValDisp = document.getElementById('periodValDisp');
+
+const chkTrace = document.getElementById('chkTrace');
+const chkX = document.getElementById('chkX');
+const chkV = document.getElementById('chkV');
+const chkA = document.getElementById('chkA');
+const chkStopOnePeriod = document.getElementById('chkStopOnePeriod');
+
+let A_phys = parseFloat(ampSlider.value);
+let k_phys = parseFloat(kSlider.value);
+let m_phys = parseFloat(massSlider.value);
+
+const startX = 180;
+const graphWidth = 480; 
+const drawScaleBase = 20; 
+
+let currentT_phys = 0;
+let isPlaying = true;
+let speed = parseFloat(speedSlider.value);
+
+let historyX = [];
+let historyV = [];
+let historyA = [];
+
+function getOmega() {
+  if (m_phys <= 0 || k_phys <= 0) return 0;
+  return Math.sqrt(k_phys / m_phys);
+}
+
+function getPeriod() {
+  const om = getOmega();
+  if (om <= 0) return Infinity;
+  return 2 * Math.PI / om;
+}
+
+function getMode() {
+  const radios = document.getElementsByName('drawMode');
+  for (let r of radios) { if (r.checked) return r.value; }
+  return 'single';
+}
+
+function getTimeScale() {
+  const mode = getMode();
+  if (mode === 'single') {
+    const T = getPeriod();
+    if (T === Infinity || T <= 0) return 100;
+    return graphWidth / T; 
+  } else {
+    return 90; 
+  }
+}
+
+function sinVal(t) { return A_phys * Math.sin(getOmega() * t); }
+function cosVal(t) { return A_phys * getOmega() * Math.cos(getOmega() * t); }
+function negSinVal(t) { return -A_phys * Math.pow(getOmega(), 2) * Math.sin(getOmega() * t); }
+
+function updatePhysicsParameters() {
+  A_phys = parseFloat(ampSlider.value);
+  k_phys = parseFloat(kSlider.value);
+  m_phys = parseFloat(massSlider.value);
+  speed = parseFloat(speedSlider.value);
+
+  ampValDisp.textContent = `${A_phys.toFixed(1)} m`;
+  kValDisp.textContent = `${k_phys} N/m`;
+  massValDisp.textContent = `${m_phys.toFixed(1)} kg`;
+  speedValDisp.textContent = speed.toFixed(1);
+
+  const om = getOmega();
+  const T = getPeriod();
+
+  omegaValDisp.textContent = `${om.toFixed(2)} rad/s`;
+  if (T === Infinity) {
+    periodValDisp.textContent = `-- s (停止中)`;
+  } else {
+    periodValDisp.textContent = `${T.toFixed(2)} s`;
+  }
+}
+
+function recordTrace() {
+  if (!chkTrace.checked) return;
+  
+  historyX.push({ t: currentT_phys, val: sinVal(currentT_phys) });
+  historyV.push({ t: currentT_phys, val: cosVal(currentT_phys) });
+  historyA.push({ t: currentT_phys, val: negSinVal(currentT_phys) });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const activeGraphs = [];
+  if (chkX.checked) activeGraphs.push('x');
+  if (chkV.checked) activeGraphs.push('v');
+  if (chkA.checked) activeGraphs.push('a');
+
+  const count = activeGraphs.length;
+  if (count === 0) {
+    ctx.fillStyle = '#666'; ctx.font = '15px sans-serif';
+    ctx.fillText('コントロールパネルで表示したいグラフを選択してください。', startX, 300);
+    drawSpringMass(200);
+    return;
+  }
+
+  const spacing = spacing_all / (count + 1);
+  const centerYs = {};
+  activeGraphs.forEach((type, index) => { centerYs[type] = spacing * (index + 1) + 20; });
+
+  const massYBase = centerYs['x'] || centerYs['v'] || centerYs['a'] || 200;
+  drawSpringMass(massYBase);
+
+  const om = getOmega();
+  const timeScale = getTimeScale();
+  const mode = getMode();
+
+  let cursorX, offsetX;
+
+  if (mode === 'single') {
+    cursorX = startX + (currentT_phys * timeScale) % graphWidth;
+    // ちょうど1周期に達した時は右端にカーソルを固定
+    if (cursorX === startX && currentT_phys > 0) {
+      cursorX = startX + graphWidth;
+    }
+    offsetX = Math.floor((currentT_phys * timeScale) / graphWidth) * graphWidth;
+    if (offsetX >= graphWidth && currentT_phys * timeScale % graphWidth === 0) {
+      offsetX = (Math.floor((currentT_phys * timeScale) / graphWidth) - 1) * graphWidth;
+    }
+  } else {
+    cursorX = startX + currentT_phys * timeScale;
+    offsetX = 0;
+    if (cursorX > startX + graphWidth) {
+      offsetX = cursorX - (startX + graphWidth);
+      cursorX = startX + graphWidth;
+    }
+  }
+
+  activeGraphs.forEach((type, index) => {
+    const centerY = centerYs[type];
+    const isLast = (index === count - 1);
+    const nextType = activeGraphs[index + 1];
+
+    if (type === 'x') {
+      drawGraphStage({
+        centerY: centerY,
+        title: `① 変位 x(t) = A sin(ωt)  [A = ${A_phys.toFixed(2)} m]`,
+        color: '#1e88e5', valFunc: sinVal, derivFunc: cosVal, history: historyX,
+        unitName: 'x', unitLabel: 'm', isLast: isLast,
+        nextCenterY: nextType ? centerYs[nextType] : null, nextDerivVal: cosVal(currentT_phys),
+        cursorX: cursorX, offsetX: offsetX, timeScale: timeScale, mode: mode
+      });
+    } else if (type === 'v') {
+      const vMax = A_phys * om;
+      drawGraphStage({
+        centerY: centerY,
+        title: `② 速度 v(t) = Aω cos(ωt)  [Aω = ${vMax.toFixed(2)} m/s]`,
+        color: '#43a047', valFunc: cosVal, derivFunc: negSinVal, history: historyV,
+        unitName: 'v', unitLabel: 'm/s', isLast: isLast,
+        nextCenterY: nextType ? centerYs[nextType] : null, nextDerivVal: negSinVal(currentT_phys),
+        cursorX: cursorX, offsetX: offsetX, timeScale: timeScale, mode: mode
+      });
+    } else if (type === 'a') {
+      const aMax = A_phys * om * om;
+      drawGraphStage({
+        centerY: centerY,
+        title: `③ 加速度 a(t) = -Aω² sin(ωt)  [Aω² = ${aMax.toFixed(2)} m/s²]`,
+        color: '#fb8c00', valFunc: negSinVal, 
+        derivFunc: (t) => -A_phys * Math.pow(om, 3) * Math.cos(om * t),
+        history: historyA,
+        unitName: 'a', unitLabel: 'm/s²', isLast: isLast,
+        nextCenterY: nextType ? centerYs[nextType] : null, nextDerivVal: 0,
+        cursorX: cursorX, offsetX: offsetX, timeScale: timeScale, mode: mode
+      });
+    }
+  });
+
+  // 時間カーソル（赤縦線）
+  ctx.strokeStyle = 'rgba(229, 57, 53, 0.4)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(cursorX, 30); ctx.lineTo(cursorX, spacing_all + 20); ctx.stroke();
+}
+
+const spacing_all = 600;
+
+function drawSpringMass(centerY) {
+  const massX = 80;
+  const currentY = centerY - sinVal(currentT_phys) * drawScaleBase;
+
+  ctx.fillStyle = '#888'; ctx.fillRect(20, 20, 120, 8);
+
+  ctx.beginPath(); ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+  ctx.moveTo(massX, 28);
+  const turns = 10;
+  const len = Math.max(15, currentY - 28);
+  for (let i = 0; i <= turns; i++) {
+    const y = 28 + (len / turns) * i;
+    const xOffset = (i === 0 || i === turns) ? 0 : (i % 2 === 0 ? 10 : -10);
+    ctx.lineTo(massX + xOffset, y);
+  }
+  ctx.stroke();
+
+  const massRadius = m_phys <= 0 ? 8 : 10 + m_phys * 3;
+  ctx.fillStyle = '#1e88e5'; 
+  ctx.beginPath(); ctx.arc(massX, currentY, massRadius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+  if (chkX.checked) {
+    const timeScale = getTimeScale();
+    const mode = getMode();
+    let cursorX;
+    if (mode === 'single') {
+      cursorX = startX + (currentT_phys * timeScale) % graphWidth;
+      if (cursorX === startX && currentT_phys > 0) cursorX = startX + graphWidth;
+    } else {
+      cursorX = startX + currentT_phys * timeScale;
+      if (cursorX > startX + graphWidth) cursorX = startX + graphWidth;
+    }
+    ctx.beginPath(); ctx.setLineDash([4, 4]); ctx.strokeStyle = '#1e88e5';
+    ctx.moveTo(massX, currentY); ctx.lineTo(cursorX, currentY); ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+function drawGraphStage(p) {
+  const T = getPeriod();
+
+  ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(startX, p.centerY); ctx.lineTo(startX + graphWidth, p.centerY); ctx.stroke();
+
+  if (p.mode === 'single') {
+    ctx.strokeStyle = '#cccccc'; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(startX + graphWidth, p.centerY - 45); ctx.lineTo(startX + graphWidth, p.centerY + 45); ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (T !== Infinity && T > 0) {
+      const arrowY = p.centerY + 40;
+      ctx.strokeStyle = '#0288d1'; ctx.fillStyle = '#0288d1'; ctx.lineWidth = 1.2;
+      
+      ctx.beginPath();
+      ctx.moveTo(startX, arrowY); ctx.lineTo(startX + graphWidth, arrowY);
+      ctx.moveTo(startX, arrowY); ctx.lineTo(startX + 6, arrowY - 3); ctx.lineTo(startX + 6, arrowY + 3);
+      ctx.moveTo(startX + graphWidth, arrowY); ctx.lineTo(startX + graphWidth - 6, arrowY - 3); ctx.lineTo(startX + graphWidth - 6, arrowY + 3);
+      ctx.stroke(); ctx.fill();
+
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`周期 T = ${T.toFixed(2)} s`, startX + graphWidth / 2, arrowY - 3);
+      ctx.textAlign = 'left'; 
+    }
+  }
+
+  ctx.fillStyle = '#111'; ctx.font = 'bold 12px sans-serif';
+  ctx.fillText(p.title, startX, p.centerY - 50);
+
+  const curValue = p.valFunc(currentT_phys);
+  const curY = p.centerY - curValue * drawScaleBase;
+
+  if (chkTrace.checked && p.history && p.history.length > 0) {
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 2.0;       
+    ctx.setLineDash([3, 2]); 
+    
+    ctx.beginPath();
+    let hasStarted = false;
+    for (let i = 0; i < p.history.length; i++) {
+      const data = p.history[i];
+      const px = startX + data.t * p.timeScale - p.offsetX;
+      const py = p.centerY - data.val * drawScaleBase;
+      
+      if (px < startX || px > startX + graphWidth) continue; 
+      if (!hasStarted) {
+        ctx.moveTo(px, py);
+        hasStarted = true;
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  const mathSlope = p.derivFunc(currentT_phys);
+  const screenSlope = - mathSlope * (drawScaleBase / p.timeScale);
+  const tangentLen = 35;
+  const dx = tangentLen / Math.sqrt(1 + screenSlope * screenSlope); 
+  const dy = screenSlope * dx;
+
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 3.0; 
+  ctx.beginPath();
+  ctx.moveTo(p.cursorX - dx, curY - dy);
+  ctx.lineTo(p.cursorX + dx, curY + dy);
+  ctx.stroke();
+
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath(); ctx.arc(p.cursorX, curY, 5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.fillStyle = p.color; ctx.font = 'bold 12px sans-serif';
+  let textX = p.cursorX + 10;
+  if (textX > startX + graphWidth - 120) textX = p.cursorX - 140; 
+
+  ctx.fillText(`【${p.unitName}】: ${curValue.toFixed(2)} ${p.unitLabel}`, textX, curY + 4);
+
+  if (p.unitName !== 'a') {
+    ctx.fillStyle = '#e53935'; ctx.font = 'bold 11px sans-serif';
+    ctx.fillText(`(傾き: ${mathSlope.toFixed(2)})`, textX, curY - 12);
+  }
+
+  if (!p.isLast && p.nextCenterY !== null) {
+    const nextY = p.nextCenterY - p.nextDerivVal * drawScaleBase;
+    ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#e53935';
+    ctx.moveTo(p.cursorX, curY);
+    ctx.lineTo(p.cursorX, nextY);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+}
+
+const dt_frame = 1/60;
+function update() {
+  if (isPlaying) {
+    const T = getPeriod();
+    const mode = getMode();
+
+    currentT_phys += dt_frame * speed;
+
+    // 1周期でストップの判定（軌跡をリセットせずそのまま固定）
+    if (mode === 'single' && chkStopOnePeriod.checked && T > 0 && T !== Infinity) {
+      if (currentT_phys >= T) {
+        currentT_phys = T; // ぴったり1周期目の右端で固定
+        isPlaying = false;
+        playBtn.textContent = '再生';
+      }
+    }
+
+    recordTrace();
+  }
+  draw();
+  requestAnimationFrame(update);
+}
+
+function clearHistory() {
+  historyX = []; historyV = []; historyA = [];
+}
+
+playBtn.addEventListener('click', () => { 
+  const T = getPeriod();
+  const mode = getMode();
+
+  // 1周期完了位置で止まっている状態から再生を押したら頭に戻す
+  if (!isPlaying && mode === 'single' && chkStopOnePeriod.checked && currentT_phys >= T) {
+    currentT_phys = 0;
+    clearHistory();
+  }
+
+  isPlaying = !isPlaying; 
+  playBtn.textContent = isPlaying ? '一時停止' : '再生'; 
+});
+
+resetBtn.addEventListener('click', () => { currentT_phys = 0; clearHistory(); draw(); });
+
+document.getElementsByName('drawMode').forEach(radio => {
+  radio.addEventListener('change', () => {
+    currentT_phys = 0;
+    clearHistory();
+    draw();
+  });
+});
+
+ampSlider.addEventListener('input', () => { updatePhysicsParameters(); currentT_phys = 0; clearHistory(); });
+kSlider.addEventListener('input', () => { updatePhysicsParameters(); currentT_phys = 0; clearHistory(); });
+massSlider.addEventListener('input', () => { updatePhysicsParameters(); currentT_phys = 0; clearHistory(); }); 
+speedSlider.addEventListener('input', updatePhysicsParameters);
+[chkX, chkV, chkA, chkTrace].forEach(chk => chk.addEventListener('change', draw));
+
+updatePhysicsParameters();
+update();
+</script>
+
+</body>
+</html>
